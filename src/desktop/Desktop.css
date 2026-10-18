@@ -1,0 +1,57 @@
+.desktop {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: var(--font);
+}
+.win {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  contain: layout paint;
+}
+.win-loading, .win-error {
+  padding: 16px;
+  font-size: 13px;
+  opacity: 0.7;
+}
+.win-error pre { white-space: pre-wrap; color: #f38ba8; }
+.win-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 3;
+}
+.desk-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.desk-hint kbd {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #ffffff30;
+  background: #ffffff10;
+  font: inherit;
+}
+.desk-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #f9e2afdd;
+  color: #1e1e2e;
+  font-size: 13px;
+  z-index: 1001;
+}

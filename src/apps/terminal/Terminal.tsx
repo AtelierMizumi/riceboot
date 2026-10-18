@@ -21,6 +21,7 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
       fontSize: 14,
       cursorBlink: true,
       cursorStyle: 'bar',
+      screenReaderMode: true,
       allowTransparency: true,
       theme: {
         background: '#00000000',

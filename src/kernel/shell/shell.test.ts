@@ -4,6 +4,7 @@ import { seedHome } from '../vfs'
 import type { Vfs } from '../vfs'
 import { createShell, type Shell } from './shell'
 
+// eslint-disable-next-line no-control-regex -- ANSI escape sequences
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
 
 let vfs: Vfs

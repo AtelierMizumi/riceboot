@@ -4,6 +4,7 @@ export interface LineEditor {
   readonly history: string[]
 }
 
+// eslint-disable-next-line no-control-regex -- ANSI escape sequences
 const ESC_RE = /^\x1b\[[0-9;]*[A-Za-z~]/
 
 /** Readline-style editing of one input line, independent of xterm. */

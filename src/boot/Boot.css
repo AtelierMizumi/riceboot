@@ -1,0 +1,13 @@
+.boot {
+  position: fixed;
+  inset: 0;
+  padding: 16px 20px;
+  background: #000;
+  color: #ccc;
+  font: 14px/1.45 ui-monospace, 'JetBrains Mono', monospace;
+  overflow: hidden;
+}
+.boot-ok { color: #4ade80; }
+.boot-fail { color: #f87171; }
+.boot-welcome { color: #fff; }
+.boot-welcome::after { content: ''; }
