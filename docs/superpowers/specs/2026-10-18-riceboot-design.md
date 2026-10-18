@@ -52,8 +52,8 @@ for ~1 s, then pick `ultra` (WebGPU, blur, live wallpaper), `balanced`, or
 **Headers**: `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: credentialless` to enable cross-origin
 isolation (SharedArrayBuffer for the VM) while still allowing allowlisted
-iframes. Must be verified early (M1) across Chrome/Firefox/Safari; if Safari
-lacks `credentialless`, the VM falls back to non-SAB mode.
+iframes. Supported browsers: Chromium-based and Firefox-based only (Safari is
+out of scope). Verify early in M1 on both engines.
 
 ## 4. Modules
 

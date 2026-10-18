@@ -17,6 +17,8 @@ riceboot is a browser-based, "riced" Arch Linux desktop for people who have neve
 
 ## Current task: Milestone M1 only
 
+Follow `docs/superpowers/plans/2026-10-18-m1-shell-compositor.md` task by task (it supersedes the summary list below).
+
 1. Scaffold the repo (Vite React TS, Vitest, Playwright, size-limit, ESLint, wrangler config with COOP `same-origin` + COEP `credentialless` headers).
 2. `kernel/vfs`: IndexedDB-backed VFS with POSIX-like API and `watch`, with an in-memory fallback. Tests first.
 3. `compositor`: dwindle tiling + floating, 10 workspaces, keybind dispatcher (configurable "Super" key), bezier animation engine. Layout logic is pure and unit-tested.
