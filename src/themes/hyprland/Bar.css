@@ -1,0 +1,46 @@
+.hb-bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 6px 20px 0;
+  color: var(--fg);
+  font: 600 13px/1 var(--font);
+  z-index: 1000;
+  user-select: none;
+}
+.hb-left, .hb-right { display: flex; align-items: center; gap: 8px; }
+.hb-right { justify-content: flex-end; }
+.hb-logo, .hb-ws, .hb-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(var(--blur));
+  border: 1px solid #ffffff10;
+}
+.hb-logo { color: var(--accent2); font-size: 15px; }
+.hb-ws { padding: 0 4px; gap: 2px; }
+.hb-ws-btn {
+  all: unset;
+  cursor: pointer;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 18px;
+  color: #6c7086;
+  transition: background 0.3s cubic-bezier(0.05, 0.9, 0.1, 1.05), min-width 0.3s cubic-bezier(0.05, 0.9, 0.1, 1.05), color 0.2s;
+}
+.hb-ws-btn.occupied { color: var(--fg); }
+.hb-ws-btn.active { min-width: 32px; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: var(--bg); }
+.hb-ws-btn:hover:not(.active) { background: #ffffff14; }
+.hb-ws-btn:focus-visible { outline: 2px solid var(--accent); }
+.hb-center { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+.hb-clock { color: var(--accent); }

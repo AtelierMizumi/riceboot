@@ -1,0 +1,31 @@
+@property --hb-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes hb-spin {
+  to { --hb-angle: 360deg; }
+}
+
+.win {
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(var(--blur));
+  box-shadow: 0 10px 30px #0008;
+}
+.win::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: var(--border-size);
+  border-radius: inherit;
+  background: var(--border-inactive);
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+  z-index: 2;
+}
+.win.focused::before {
+  background: conic-gradient(from var(--hb-angle), var(--accent), var(--accent2), var(--accent));
+  animation: hb-spin 4s linear infinite;
+}
