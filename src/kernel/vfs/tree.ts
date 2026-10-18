@@ -108,11 +108,7 @@ export class Tree {
   rm(raw: string, recursive = false): Mutation[] {
     const p = normalize(raw)
     const n = this.get(p)
-    if (n.type === 'dir') {
-      const kids = this.children(p)
-      if (kids.length && !recursive) throw new VfsError('ENOTEMPTY', p)
-      for (const k of kids) this.rm(p === '/' ? '/' + k : p + '/' + k, true)
-    }
+    if (n.type === 'dir' && this.children(p).length && !recursive) throw new VfsError('ENOTEMPTY', p)
     const out: Mutation[] = []
     for (const key of [...this.nodes.keys()]) {
       if (key === p || key.startsWith(p + '/')) {
