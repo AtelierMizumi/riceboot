@@ -67,3 +67,11 @@ test('default bindings cover the documented actions', () => {
     expect(actions).toContain(a)
   }
 })
+
+test('letters match by physical code (macOS Option, non-Latin layouts)', () => {
+  const run = vi.fn()
+  const d = createDispatcher({ bindings: DEFAULT_BINDINGS, run })
+  d(key({ key: 'œ', code: 'KeyQ', altKey: true }))
+  d(key({ key: 'й', code: 'KeyV', altKey: true }))
+  expect(run.mock.calls).toEqual([['killactive'], ['togglefloating']])
+})

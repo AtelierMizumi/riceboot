@@ -169,3 +169,12 @@ test('hyprctl without subcommand prints usage', async () => {
   expect(r.code).toBe(1)
   expect(r.text).toContain('usage')
 })
+
+test('a command that throws reports an error instead of rejecting', async () => {
+  const broken = { ...vfs, readdir: async () => { throw new Error('storage gone') } }
+  const s = createShell({ vfs: broken, io: { write: (x) => (out += x), clear: () => {} } })
+  out = ''
+  const code = await s.run('ls')
+  expect(code).toBe(1)
+  expect(strip(out)).toBe('rbsh: ls: storage gone\r\n')
+})

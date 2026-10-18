@@ -48,9 +48,11 @@ export function parseCombo(combo: string, mod: ModKey): Combo {
   return out
 }
 
-/** Key name of an event: digits by physical code (Shift-proof), Enter as "return", letters lowercase. */
+/** Key name of an event: digits and letters by physical code, Enter as "return". */
 function eventKey(e: KeyboardEvent): string {
   if (/^Digit\d$/.test(e.code)) return e.code.slice(5)
+  // Physical letter: macOS Option and non-Latin layouts change e.key (Option+Q = "œ").
+  if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase()
   if (e.key === 'Enter') return 'return'
   return e.key.toLowerCase()
 }

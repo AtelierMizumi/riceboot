@@ -45,6 +45,15 @@ function centered(area: Rect): Rect {
   return { x: area.x + Math.round((area.w - w) / 2), y: area.y + Math.round((area.h - h) / 2), w, h }
 }
 
+/** Shrink and move `r` so it lies fully inside `area`. */
+function clampTo(r: Rect, area: Rect): Rect {
+  const w = Math.max(1, Math.min(r.w, area.w))
+  const h = Math.max(1, Math.min(r.h, area.h))
+  const x = Math.min(Math.max(r.x, area.x), area.x + area.w - w)
+  const y = Math.min(Math.max(r.y, area.y), area.y + area.h - h)
+  return { x, y, w, h }
+}
+
 export function createWmStore() {
   return create<WmState>()((set, get) => {
     const onWorkspace = (ws: number) => Object.values(get().windows).filter((w) => w.workspace === ws)
@@ -153,7 +162,7 @@ export function createWmStore() {
       },
 
       setArea(area) {
-        set({ area })
+        set({ area: { ...area, w: Math.max(1, area.w), h: Math.max(1, area.h) } })
       },
 
       setGaps(gaps) {
@@ -164,7 +173,7 @@ export function createWmStore() {
         const { active, order, area, gaps } = get()
         const out = dwindle(order[active] ?? [], area, gaps)
         for (const w of onWorkspace(active)) {
-          if (w.floating) out[w.id] = w.floatRect ?? centered(area)
+          if (w.floating) out[w.id] = clampTo(w.floatRect ?? centered(area), area)
           if (w.fullscreen) out[w.id] = area
         }
         return out

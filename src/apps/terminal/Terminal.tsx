@@ -47,20 +47,19 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
 
     const shell = createShell({ vfs, wm, io: { write: (s) => term.write(s), clear: () => term.clear() } })
     const updateTitle = () => setTitle(`user@archlinux: ${shell.cwd.replace(/^\/home\/user/, '~')}`)
-    let busy = false
     const editor = createLineEditor({
       write: (s) => term.write(s),
       onSubmit: async (line) => {
-        busy = true
-        await shell.run(line)
-        busy = false
-        updateTitle()
-        term.write(shell.prompt())
+        try {
+          await shell.run(line)
+        } finally {
+          updateTitle()
+          term.write(shell.prompt())
+        }
       },
+      onInterrupt: () => term.write(shell.prompt()),
     })
-    const sub = term.onData((d) => {
-      if (!busy) editor.feed(d)
-    })
+    const sub = term.onData((d) => editor.feed(d))
 
     term.write(MOTD + shell.prompt())
     updateTitle()

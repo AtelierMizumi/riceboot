@@ -95,8 +95,8 @@ test('toggleFloating takes window out of tiling with a centered 60% rect (whole 
 test('setFloatRect updates a floating window rect', () => {
   const a = s().open('terminal', 'a')
   s().toggleFloating(a)
-  s().setFloatRect(a, { x: 1, y: 2, w: 3, h: 4 })
-  expect(s().layout()[a]).toEqual({ x: 1, y: 2, w: 3, h: 4 })
+  s().setFloatRect(a, { x: 10, y: 50, w: 300, h: 200 })
+  expect(s().layout()[a]).toEqual({ x: 10, y: 50, w: 300, h: 200 })
 })
 
 test('toggleFullscreen makes the rect equal the area', () => {
@@ -113,4 +113,24 @@ test('setArea changes the layout', () => {
   const before = s().layout()[a]
   s().setArea({ x: 0, y: 34, w: 500, h: 300 })
   expect(s().layout()[a]).not.toEqual(before)
+})
+
+test('setArea clamps negative sizes (window shorter than the bar)', () => {
+  s().setArea({ x: 0, y: 34, w: 300, h: -20 })
+  expect(s().area.h).toBeGreaterThanOrEqual(1)
+  const a = s().open('terminal', 'a')
+  s().toggleFullscreen(a)
+  expect(s().layout()[a].h).toBeGreaterThanOrEqual(1)
+})
+
+test('floating windows are kept inside the area after a resize', () => {
+  const a = s().open('terminal', 'a')
+  s().toggleFloating(a)
+  s().setFloatRect(a, { x: 900, y: 500, w: 400, h: 300 })
+  s().setArea({ x: 0, y: 34, w: 640, h: 400 })
+  const r = s().layout()[a]
+  expect(r.x).toBeGreaterThanOrEqual(0)
+  expect(r.y).toBeGreaterThanOrEqual(34)
+  expect(r.x + r.w).toBeLessThanOrEqual(640)
+  expect(r.y + r.h).toBeLessThanOrEqual(434)
 })

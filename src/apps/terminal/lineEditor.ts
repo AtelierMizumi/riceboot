@@ -4,16 +4,30 @@ export interface LineEditor {
   readonly history: string[]
 }
 
+export interface LineEditorOptions {
+  /** Called per line. If it returns a promise, later input waits until it settles. */
+  onSubmit(line: string): unknown
+  /** Ctrl+C: the line was discarded; redraw the prompt. */
+  onInterrupt?(): void
+  write(s: string): void
+}
+
 // eslint-disable-next-line no-control-regex -- ANSI escape sequences
 const ESC_RE = /^\x1b\[[0-9;]*[A-Za-z~]/
 
-/** Readline-style editing of one input line, independent of xterm. */
-export function createLineEditor(opts: { onSubmit(line: string): void; write(s: string): void }): LineEditor {
+/**
+ * Readline-style editing of one input line, independent of xterm. Input that
+ * arrives while a submitted line is still running is queued, so pasted
+ * multi-line text runs one command at a time.
+ */
+export function createLineEditor(opts: LineEditorOptions): LineEditor {
   const history: string[] = []
   let buf = ''
   let pos = 0
   let hIndex = -1 // -1 = editing the draft
   let draft = ''
+  let pending = ''
+  let running = false
   const { write } = opts
 
   /** Replace the whole visible line with `next`, cursor at end. */
@@ -64,26 +78,41 @@ export function createLineEditor(opts: { onSubmit(line: string): void; write(s: 
     }
   }
 
-  const feed = (data: string) => {
-    let i = 0
-    while (i < data.length) {
-      const rest = data.slice(i)
-      const esc = ESC_RE.exec(rest)
+  const submit = () => {
+    write('\r\n')
+    const line = buf
+    if (line.trim() && history.at(-1) !== line) history.push(line)
+    buf = ''
+    pos = 0
+    hIndex = -1
+    const result = opts.onSubmit(line)
+    if (result && typeof (result as Promise<unknown>).then === 'function') {
+      running = true
+      const resume = () => {
+        running = false
+        pump()
+      }
+      ;(result as Promise<unknown>).then(resume, resume)
+    }
+  }
+
+  const pump = () => {
+    while (pending && !running) {
+      const esc = ESC_RE.exec(pending)
       if (esc) {
+        pending = pending.slice(esc[0].length)
         handleEscape(esc[0])
-        i += esc[0].length
         continue
       }
-      const c = data[i++]
+      const c = pending[0]
+      pending = pending.slice(1)
+      if (c === '\n' && prevWasCR) {
+        prevWasCR = false
+        continue
+      }
+      prevWasCR = c === '\r'
       if (c === '\r' || c === '\n') {
-        if (c === '\n' && data[i - 2] === '\r') continue
-        write('\r\n')
-        const line = buf
-        if (line.trim() && history.at(-1) !== line) history.push(line)
-        buf = ''
-        pos = 0
-        hIndex = -1
-        opts.onSubmit(line)
+        submit()
       } else if (c === '\x7f' || c === '\b') {
         if (pos === 0) continue
         const tail = buf.slice(pos)
@@ -95,11 +124,19 @@ export function createLineEditor(opts: { onSubmit(line: string): void; write(s: 
         buf = ''
         pos = 0
         hIndex = -1
+        opts.onInterrupt?.()
       } else if (c >= ' ') {
         insert(c)
       }
     }
   }
+  let prevWasCR = false
 
-  return { feed, history }
+  return {
+    feed(data) {
+      pending += data
+      pump()
+    },
+    history,
+  }
 }

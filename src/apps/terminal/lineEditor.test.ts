@@ -74,3 +74,62 @@ test('empty submissions are not added to history', () => {
   ed.feed('\r\r')
   expect(ed.history).toEqual([])
 })
+
+test('pasted lines run one after another when onSubmit is async', async () => {
+  const log: string[] = []
+  const resolvers: (() => void)[] = []
+  const e = createLineEditor({
+    write: () => {},
+    onSubmit: (l) => {
+      log.push('start ' + l)
+      return new Promise<void>((r) => resolvers.push(() => (log.push('end ' + l), r())))
+    },
+  })
+  e.feed('mkdir a\rcd a\r')
+  expect(log).toEqual(['start mkdir a'])
+  resolvers.shift()!()
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(log).toEqual(['start mkdir a', 'end mkdir a', 'start cd a'])
+})
+
+test('input typed while a command runs is kept, not dropped', async () => {
+  const got: string[] = []
+  let release!: () => void
+  const e = createLineEditor({
+    write: () => {},
+    onSubmit: (l) => {
+      got.push(l)
+      if (l === 'slow') return new Promise<void>((r) => (release = r))
+    },
+  })
+  e.feed('slow\r')
+  e.feed('pwd\r')
+  expect(got).toEqual(['slow'])
+  release()
+  await new Promise((r) => setTimeout(r, 0))
+  expect(got).toEqual(['slow', 'pwd'])
+})
+
+test('a rejected onSubmit does not block later input', async () => {
+  const got: string[] = []
+  const e = createLineEditor({
+    write: () => {},
+    onSubmit: (l) => {
+      got.push(l)
+      if (l === 'boom') return Promise.reject(new Error('x'))
+    },
+  })
+  e.feed('boom\r')
+  await new Promise((r) => setTimeout(r, 0))
+  e.feed('ok\r')
+  await new Promise((r) => setTimeout(r, 0))
+  expect(got).toEqual(['boom', 'ok'])
+})
+
+test('Ctrl+C calls onInterrupt so the prompt can be redrawn', () => {
+  let interrupted = 0
+  const e = createLineEditor({ write: () => {}, onSubmit: () => {}, onInterrupt: () => interrupted++ })
+  e.feed('abc\x03')
+  expect(interrupted).toBe(1)
+})

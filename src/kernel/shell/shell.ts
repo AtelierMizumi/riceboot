@@ -46,7 +46,12 @@ export function createShell(env: ShellEnv): Shell {
           out: seg.redirect ? (s) => (buffer += s) : (s) => env.io.write(tty(s)),
           err: (s) => env.io.write(tty(s)),
         }
-        code = await cmd(args, ctx)
+        try {
+          code = await cmd(args, ctx)
+        } catch (e) {
+          env.io.write(tty(`rbsh: ${name}: ${e instanceof Error ? e.message : String(e)}\n`))
+          return 1
+        }
         if (seg.redirect) {
           const p = resolve(seg.redirect.path)
           try {
