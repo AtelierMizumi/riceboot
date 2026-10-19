@@ -4,7 +4,10 @@ import { loadRuntime } from './runtime'
 
 export interface VmSessionHandlers {
   onOutput(text: string): void
+  /** The login prompt is up. Input typed now goes to getty, not a shell. */
   onBooted(): void
+  /** A root shell prompt is up. Only now is it safe to send shell commands such as stty. */
+  onShell(): void
   onFailed(reason: string): void
 }
 
@@ -21,6 +24,7 @@ export class VmSession {
   private decoder = new TextDecoder('utf-8')
   private tail = ''
   private booted = false
+  private shellReady = false
 
   constructor(
     private readonly opts: { baseUrl: string; manifest: VmManifest },
@@ -47,8 +51,9 @@ export class VmSession {
     this.emu?.serial0_send(text)
   }
 
+  /** Sends the terminal size to the guest shell. A no-op until the shell prompt has appeared. */
   resize(cols: number, rows: number): void {
-    this.write(sttyCommand(cols, rows))
+    if (this.shellReady) this.write(sttyCommand(cols, rows))
   }
 
   stop(): void {
@@ -63,12 +68,13 @@ export class VmSession {
     const text = this.decoder.decode(Uint8Array.of(byte), { stream: true })
     if (!text) return
     this.handlers.onOutput(text)
-    if (!this.booted) {
-      this.tail = (this.tail + text).slice(-64)
-      if (this.tail.includes('login:')) {
-        this.booted = true
-        this.handlers.onBooted()
-      }
+    this.tail = (this.tail + text).slice(-64)
+    if (!this.booted && this.tail.includes('login:')) {
+      this.booted = true
+      this.handlers.onBooted()
+    } else if (this.booted && !this.shellReady && /localhost:[^\n]*# $/.test(this.tail)) {
+      this.shellReady = true
+      this.handlers.onShell()
     }
   }
 }
