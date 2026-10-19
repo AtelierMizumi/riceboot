@@ -5,3 +5,5 @@ test-results/
 playwright-report/
 .wrangler/
 *.tsbuildinfo
+public/vm/
+.cache/

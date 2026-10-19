@@ -1,5 +1,5 @@
-import { CHUNK, partName } from '../../src/vm/parts'
-import type { VmDisk, VmManifest } from '../../src/vm/options'
+import { CHUNK, partName } from '../../src/vm/parts.ts'
+import type { VmDisk, VmManifest } from '../../src/vm/options.ts'
 
 export function buildManifest(args: VmManifest): VmManifest {
   for (const d of [args.cdrom, args.hda]) {

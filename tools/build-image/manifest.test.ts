@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { CHUNK } from '../../src/vm/parts'
-import { buildManifest, listParts, totalBytes } from './manifest'
+import { buildManifest, listParts, totalBytes } from './manifest.ts'
 
 const cdrom = { base: 'alpine', ext: '.iso', size: 4 * CHUNK }
 const hda = { base: 'rice', ext: '.img', size: 128 * CHUNK }

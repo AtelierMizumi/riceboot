@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { parseApkIndex, resolveClosure } from './resolve'
+import { parseApkIndex, resolveClosure } from './resolve.ts'
 
 const INDEX = `C:Q1abc=
 P:fastfetch
