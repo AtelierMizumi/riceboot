@@ -127,3 +127,20 @@ test('pagehide saves at once without waiting for the debounce', async () => {
   expect(ov.store.save).toHaveBeenCalledTimes(1)
   s.stop()
 })
+
+test('stop resolves only after the final save has finished', async () => {
+  let finish!: () => void
+  const ov = overlayWith([], () => new Promise<void>((r) => (finish = r)))
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[[1, new Uint8Array(256)]]], set_state: vi.fn() } } } } } } }
+  e.run = vi.fn()
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: ov }, handlers, { load: async () => {}, create: (() => e) as never })
+  await s.start()
+  let done = false
+  void s.stop().then(() => (done = true))
+  await Promise.resolve()
+  expect(done).toBe(false)
+  finish()
+  await vi.runAllTimersAsync()
+  expect(done).toBe(true)
+})

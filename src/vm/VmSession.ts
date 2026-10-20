@@ -102,34 +102,38 @@ export class VmSession {
     if (this.shellReady && !this.stopped) this.write(sttyCommand(cols, rows))
   }
 
-  /** Saves pending changes, stops the emulator, removes its listeners and frees its memory. Idempotent. */
-  stop(): void {
-    if (this.stopped) return
+  /** Saves pending changes, stops the emulator, removes its listeners and frees its memory. Idempotent.
+   *  The promise resolves once the final save has finished. */
+  stop(): Promise<void> {
+    if (this.stopped) return Promise.resolve()
     this.stopped = true
     this.watchdog?.clear()
     this.watchdog = null
     this.saveNow()
+    let flushed: Promise<void> = Promise.resolve()
     if (this.flusher) {
       const f = this.flusher
       this.flusher = null
-      void f.flushNow().finally(() => f.dispose())
+      flushed = f.flushNow().finally(() => f.dispose())
     }
     if (this.capture !== null) clearInterval(this.capture)
     this.capture = null
     if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide)
     const emu = this.emu
     this.emu = null
-    if (!emu) return
-    emu.remove_listener('serial0-output-byte', this.onByte as (p: never) => void)
-    emu.remove_listener('download-error', this.onDownloadError as (p: never) => void)
-    void (async () => {
-      try {
-        await emu.stop()
-        await emu.destroy?.()
-      } catch {
-        // Already torn down; nothing left to free.
-      }
-    })()
+    if (emu) {
+      emu.remove_listener('serial0-output-byte', this.onByte as (p: never) => void)
+      emu.remove_listener('download-error', this.onDownloadError as (p: never) => void)
+      void (async () => {
+        try {
+          await emu.stop()
+          await emu.destroy?.()
+        } catch {
+          // Already torn down; nothing left to free.
+        }
+      })()
+    }
+    return flushed
   }
 
   /** Wires overlay restore, periodic capture, debounced saves and the pagehide save. */
