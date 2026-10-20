@@ -1,0 +1,22 @@
+import { expect, test } from '@playwright/test'
+
+test('terminal switches to real linux, runs fastfetch and python3, and back', async ({ page }) => {
+  test.setTimeout(480_000)
+  await page.goto('/')
+  await page.getByTestId('desktop').waitFor()
+  await page.keyboard.press('Alt+Enter')
+  const term = page.getByTestId('window-terminal').last()
+  await page.getByRole('button', { name: 'linux' }).click()
+  await expect(term).toContainText('login:', { timeout: 300_000 })
+  await page.keyboard.type('root')
+  await page.keyboard.press('Enter')
+  await expect(term).toContainText('riceboot: packages ready', { timeout: 60_000 })
+  await page.keyboard.type('fastfetch --pipe -l none | head -1')
+  await page.keyboard.press('Enter')
+  await expect(term).toContainText('root@localhost', { timeout: 60_000 })
+  await page.keyboard.type('python3 -c "print(7*6)"')
+  await page.keyboard.press('Enter')
+  await expect(term).toContainText('42', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'shell' }).click()
+  await expect(term).toContainText('riceboot')
+})

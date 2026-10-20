@@ -239,6 +239,9 @@ importers:
       typescript-eslint:
         specifier: ^8.71.2
         version: 8.71.2(eslint@10.13.0(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3)
+      v86:
+        specifier: 0.5.471
+        version: 0.5.471
       vite:
         specifier: ^8.3.4
         version: 8.3.4(esbuild@0.28.2)
@@ -1909,6 +1912,9 @@ packages:
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
+  v86@0.5.471:
+    resolution: {integrity: sha512-2TuNIpJU6sYYKnq/xR6F9Epi59DVBYpmkcV1LzLgNwHWxs/uFPB4szeYdsbhn6P8kV5YOlC6+7xSHEOQ2UiYdQ==}
+
   vite@8.3.4:
     resolution: {integrity: sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3530,6 +3536,8 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  v86@0.5.471: {}
 
   vite@8.3.4(esbuild@0.28.2):
     dependencies:

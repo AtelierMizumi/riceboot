@@ -7,3 +7,31 @@
 .app-terminal .xterm-screen {
   background: transparent !important;
 }
+.term-wrap {
+  position: absolute;
+  inset: 0;
+}
+.term-bar {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 12px var(--font);
+}
+.term-bar button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #6c7086;
+  background: #ffffff10;
+}
+.term-bar button[aria-pressed='true'] {
+  color: var(--bg);
+  background: var(--accent);
+}
+.term-status { color: #a6adc8; }
+.term-error { color: #f38ba8; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
