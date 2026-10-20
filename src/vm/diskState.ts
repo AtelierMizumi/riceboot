@@ -17,3 +17,9 @@ export function captureDirty(disk: V86DiskLike, overlay: BlockOverlay): void {
 export function restoreBlocks(disk: V86DiskLike, blocks: Map<number, Uint8Array>): void {
   disk.set_state([[...blocks.entries()]])
 }
+
+/** The package disk (hda) inside a v86 emulator, or null when the internals are not there. */
+export function hdaFromEmulator(emu: unknown): V86DiskLike | null {
+  const e = emu as { v86?: { cpu?: { devices?: { ide?: { primary?: { master?: { buffer?: V86DiskLike } } } } } } }
+  return e.v86?.cpu?.devices?.ide?.primary?.master?.buffer ?? null
+}

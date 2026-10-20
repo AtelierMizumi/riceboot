@@ -9,6 +9,7 @@ function fakeEmu() {
     add_listener: (ev: string, cb: Listener) => void (listeners.get(ev) ?? listeners.set(ev, new Set()).get(ev)!).add(cb),
     remove_listener: (ev: string, cb: Listener) => void listeners.get(ev)?.delete(cb),
     serial0_send: vi.fn(),
+    run: vi.fn(),
     stop: vi.fn(async () => {}),
     destroy: vi.fn(async () => {}),
     emit: (ev: string, payload: unknown) => [...(listeners.get(ev) ?? [])].forEach((cb) => cb(payload)),
@@ -80,4 +81,49 @@ test('a failed part download fails the session with the file name', async () => 
   await vi.runAllTimersAsync()
   expect(handlers.onFailed).toHaveBeenCalledWith(expect.stringContaining('rice-1048576-2097152.img'))
   expect(emu.destroy).toHaveBeenCalled()
+})
+
+function overlayWith(entries: [number, Uint8Array][], saved: () => Promise<void> = async () => {}) {
+  const store = { persistent: true, storedBuildId: async () => 'b1', load: async () => new Map(entries), save: vi.fn((_id: string, _b: Map<number, Uint8Array>) => saved()), clear: async () => {} }
+  return { store, buildId: 'b1', blocks: new Map(entries) }
+}
+
+test('start restores the saved blocks into the package disk, then runs the emulator', async () => {
+  const set = vi.fn()
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[]], set_state: set } } } } } } }
+  e.run = vi.fn()
+  const create = vi.fn((_o: object) => e)
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: overlayWith([[4, new Uint8Array(256)]]) }, handlers, { load: async () => {}, create: create as never })
+  await s.start()
+  expect(create.mock.calls[0][0]).toMatchObject({ autostart: false })
+  expect(set).toHaveBeenCalledTimes(1)
+  expect(e.run).toHaveBeenCalledTimes(1)
+  s.stop()
+})
+
+test('stop saves pending guest writes before it tears the emulator down', async () => {
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[[2, new Uint8Array(256)]]], set_state: vi.fn() } } } } } } }
+  e.run = vi.fn()
+  const ov = overlayWith([])
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: ov }, handlers, { load: async () => {}, create: (() => e) as never })
+  await s.start()
+  s.stop()
+  await vi.runAllTimersAsync()
+  expect(ov.store.save).toHaveBeenCalledTimes(1)
+  expect(ov.store.save.mock.calls[0][0]).toBe('b1')
+})
+
+test('pagehide saves at once without waiting for the debounce', async () => {
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[[6, new Uint8Array(256)]]], set_state: vi.fn() } } } } } } }
+  e.run = vi.fn()
+  const ov = overlayWith([])
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: ov }, handlers, { load: async () => {}, create: (() => e) as never })
+  await s.start()
+  window.dispatchEvent(new Event('pagehide'))
+  await Promise.resolve()
+  expect(ov.store.save).toHaveBeenCalledTimes(1)
+  s.stop()
 })

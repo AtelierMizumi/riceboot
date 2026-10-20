@@ -17,3 +17,8 @@ test('disks are async parts with fixed 1 MiB chunks and no network device', () =
   expect(o.memory_size).toBe(256 * 1024 * 1024)
   expect(o.autostart).toBe(true)
 })
+
+test('autostart can be turned off so the overlay is restored before the emulator runs', () => {
+  const o = buildV86Options({ baseUrl: '/vm/', manifest, wasmPath: '/vm/runtime/v86.wasm', autostart: false })
+  expect(o.autostart).toBe(false)
+})
