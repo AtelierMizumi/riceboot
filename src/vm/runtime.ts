@@ -1,6 +1,13 @@
-/** True when the browser can run WebAssembly, which v86 needs. */
+import { canAllocateMemory } from './guards'
+
+/** VM guest memory in bytes; v86 is started with this much. */
+export const VM_MEMORY_BYTES = 256 * 1024 * 1024
+
+/** True when the browser runs WebAssembly and can reserve the VM's memory. */
 export function isVmSupported(g: { WebAssembly?: unknown } = globalThis as { WebAssembly?: unknown }): boolean {
-  return typeof g.WebAssembly === 'object' && g.WebAssembly !== null
+  const wa = g.WebAssembly as { Memory?: unknown } | undefined
+  if (typeof wa !== 'object' || wa === null) return false
+  return canAllocateMemory(VM_MEMORY_BYTES, wa)
 }
 
 /** Inject a classic script (libv86.js exposes a global `V86`) and resolve when it has loaded. */

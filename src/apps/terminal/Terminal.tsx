@@ -5,10 +5,10 @@ import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
 import { createShell } from '../../kernel/shell/shell'
 import { PACKAGE_BOOTSTRAP } from '../../vm/bootstrap'
+import { createRunGuard, fetchManifest } from '../../vm/guards'
 import { VmSession } from '../../vm/VmSession'
 import { isVmSupported } from '../../vm/runtime'
 import { nextMode, type ModeEvent, type ModeState } from '../../vm/terminalMode'
-import type { VmManifest } from '../../vm/options'
 import type { AppCtx } from '../registry'
 import { createLineEditor } from './lineEditor'
 import './Terminal.css'
@@ -70,35 +70,42 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
     })
 
     let session: VmSession | null = null
+    // Every start gets a run id. Callbacks and awaits from an older run are dropped, so a stale VM cannot
+    // write into the terminal or dispatch into a newer mode.
+    const guard = createRunGuard()
     const runEffect = (effect: string) => {
       if (effect === 'show-unsupported') {
-        term.write('\r\nReal Linux needs WebAssembly. Staying in shell mode.\r\n' + shell.prompt())
+        term.write('\r\nReal Linux needs WebAssembly and about 300 MB of free memory. Staying in shell mode.\r\n' + shell.prompt())
       } else if (effect === 'start-vm') {
         session?.stop()
         session = null
+        const run = guard.next()
         void (async () => {
           try {
-            const manifest = (await (await fetch('/vm/manifest.json')).json()) as VmManifest
+            const manifest = await fetchManifest('/vm/manifest.json')
+            if (!guard.isCurrent(run)) return
             const s = new VmSession(
               { baseUrl: '/vm/', manifest },
               {
-                onOutput: (t) => term.write(t),
-                onBooted: () => dispatchRef.current({ type: 'booted' }),
+                onOutput: (t) => guard.isCurrent(run) && term.write(t),
+                onBooted: () => guard.isCurrent(run) && dispatchRef.current({ type: 'booted' }),
                 onShell: () => {
+                  if (!guard.isCurrent(run)) return
                   s.write(PACKAGE_BOOTSTRAP)
                   s.resize(term.cols, term.rows)
                 },
-                onFailed: (reason) => dispatchRef.current({ type: 'failed', reason }),
+                onFailed: (reason) => guard.isCurrent(run) && dispatchRef.current({ type: 'failed', reason }),
               },
             )
             session = s
             term.write('\r\nLoading Linux (the first start downloads about 70 MB)...\r\n')
             await s.start()
           } catch (e) {
-            dispatchRef.current({ type: 'failed', reason: e instanceof Error ? e.message : String(e) })
+            if (guard.isCurrent(run)) dispatchRef.current({ type: 'failed', reason: e instanceof Error ? e.message : String(e) })
           }
         })()
       } else if (effect === 'stop-vm') {
+        guard.cancelAll()
         session?.stop()
         session = null
         term.write('\r\n' + shell.prompt())
@@ -135,6 +142,7 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
     return () => {
       ro.disconnect()
       sub.dispose()
+      guard.cancelAll()
       session?.stop()
       session = null
       term.dispose()
