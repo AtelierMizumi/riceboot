@@ -1,0 +1,19 @@
+import { BlockOverlay } from './overlay'
+
+/** The part of a v86 disk (`emu.v86.cpu.devices.ide.primary.master.buffer`) this module uses. */
+export interface V86DiskLike {
+  get_state(): unknown
+  set_state(state: unknown): void
+}
+
+/** Copies every block v86 reports as written into the overlay. The format is pinned in docs/research/m3b-disk-state.md. */
+export function captureDirty(disk: V86DiskLike, overlay: BlockOverlay): void {
+  const state = disk.get_state() as [Array<[number, Uint8Array]>] | null
+  const entries = state?.[0] ?? []
+  for (const [key, bytes] of entries) overlay.put(key, bytes)
+}
+
+/** Hands saved blocks back to v86. Call before the emulator runs. */
+export function restoreBlocks(disk: V86DiskLike, blocks: Map<number, Uint8Array>): void {
+  disk.set_state([[...blocks.entries()]])
+}
