@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Overlay block size is exactly `CHUNK = 1048576` (the same unit as the disk parts).
+- Overlay unit is 256 bytes, v86's native block unit (`DISK_UNIT`, see `docs/research/m3b-disk-state.md`). The 1 MiB disk parts stay the lazy-load unit for the base image.
 - IndexedDB database `riceboot-vm`, object store `blocks`, meta key `buildId`.
 - Dirty blocks are flushed on a 2 s debounce and on `pagehide`.
 - Next boot: base parts from the network or cache; dirty blocks from IndexedDB override them.
@@ -94,11 +94,12 @@ git commit -m "docs(research): how to read and restore v86 disk blocks"
 - Create: `src/vm/overlay.ts`, `src/vm/overlay.test.ts`
 
 **Interfaces:**
-- Consumes: `CHUNK` from `src/vm/parts.ts`.
+- Consumes: nothing (`DISK_UNIT` is defined here).
 - Produces:
 ```ts
+export const DISK_UNIT = 256
 export class BlockOverlay {
-  put(index: number, bytes: Uint8Array): void   // throws if bytes.length !== CHUNK
+  put(index: number, bytes: Uint8Array): void   // throws if bytes.length !== DISK_UNIT
   get(index: number): Uint8Array | undefined
   dirty(): number[]                              // dirty indices, ascending
   takeDirty(): Map<number, Uint8Array>           // returns and forgets the dirty blocks (for flushing)
@@ -112,10 +113,9 @@ export class BlockOverlay {
 ```ts
 // overlay.test.ts
 import { expect, test } from 'vitest'
-import { CHUNK } from '../parts'
-import { BlockOverlay } from './overlay'
+import { BlockOverlay, DISK_UNIT } from './overlay'
 
-const block = (v: number) => new Uint8Array(CHUNK).fill(v)
+const block = (v: number) => new Uint8Array(DISK_UNIT).fill(v)
 
 test('stores and returns a block by index, sorted dirty list', () => {
   const o = new BlockOverlay()
@@ -126,8 +126,8 @@ test('stores and returns a block by index, sorted dirty list', () => {
   expect(o.size).toBe(2)
 })
 
-test('rejects a block that is not exactly CHUNK bytes', () => {
-  expect(() => new BlockOverlay().put(0, new Uint8Array(10))).toThrow(/CHUNK/)
+test('rejects a block that is not exactly DISK_UNIT bytes', () => {
+  expect(() => new BlockOverlay().put(0, new Uint8Array(10))).toThrow(/DISK_UNIT/)
 })
 
 test('takeDirty returns the dirty blocks and clears their dirty flag but keeps the data', () => {
@@ -397,7 +397,7 @@ git commit -m "feat(vm): debounced flusher with immediate flush"
 - Create: `src/vm/diskState.ts`, `src/vm/diskState.test.ts`
 
 **Interfaces:**
-- Consumes: `CHUNK` (`src/vm/parts.ts`), `BlockOverlay` (Task 1), and the format fixed in `docs/research/m3b-disk-state.md` (Task 0).
+- Consumes: `DISK_UNIT` and `BlockOverlay` (Task 1), and the format fixed in `docs/research/m3b-disk-state.md` (Task 0): entries are `[key, Uint8Array(256)]`.
 - Produces:
 ```ts
 export interface V86DiskLike {
@@ -415,11 +415,10 @@ The exact `get_state` shape is the one recorded in Task 0. The test below uses t
 ```ts
 // diskState.test.ts
 import { expect, test, vi } from 'vitest'
-import { CHUNK } from '../parts'
 import { BlockOverlay } from './overlay'
 import { captureDirty, restoreBlocks, type V86DiskLike } from './diskState'
 
-const block = (v: number) => new Uint8Array(CHUNK).fill(v)
+const block = (v: number) => new Uint8Array(256).fill(v)
 
 test('captureDirty copies only the blocks the guest wrote into the overlay', () => {
   const disk: V86DiskLike = { get_state: () => [[[5, block(3)]], ], set_state: vi.fn() }
@@ -522,6 +521,40 @@ Expected: PASS, all M3a session tests plus the 2 new ones.
 ```bash
 git add src/vm/VmSession.ts src/vm/VmSession.test.ts
 git commit -m "feat(vm): restore the overlay before boot and flush it on stop"
+```
+
+### Task 6b: Writable package disk with a home directory
+
+**Why:** Task 0 showed that `/root` lives on the ISO's tmpfs and is lost on reload. User data must sit on hda, which M3a mounts read-only.
+
+**Files:**
+- Modify: `src/vm/bootstrap.ts`, `src/vm/bootstrap.test.ts`
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: `PACKAGE_BOOTSTRAP` mounts `/dev/sda` read-write at `/mnt/rice`, creates `/mnt/rice/root`, and binds it over `/root`. The package binds and PATH from M3a stay.
+
+- [ ] **Step 1: Write the failing test** (extend `bootstrap.test.ts`)
+
+```ts
+test('bootstrap mounts the package disk read-write and binds a home directory over /root', () => {
+  expect(PACKAGE_BOOTSTRAP).toContain('mount -t ext2 -o rw /dev/sda /mnt/rice')
+  expect(PACKAGE_BOOTSTRAP).toContain('mount --bind /mnt/rice/root /root')
+  expect(PACKAGE_BOOTSTRAP).not.toContain('-o ro /dev/sda')
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**: `pnpm vitest run src/vm/bootstrap.test.ts` → FAIL (still read-only).
+
+- [ ] **Step 3: Implement**: change the mount to `-o rw`, add `mkdir -p /mnt/rice/root && mount --bind /mnt/rice/root /root` after the mount.
+
+- [ ] **Step 4: Run to verify it passes**: `pnpm vitest run src/vm/bootstrap.test.ts` → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/vm/bootstrap.ts src/vm/bootstrap.test.ts
+git commit -m "feat(vm): writable package disk with a home directory for /root"
 ```
 
 ### Task 7: Terminal flow, Reset, and banner
