@@ -62,7 +62,6 @@ export class VmSession {
   private overlay: BlockOverlay | null = null
   private flusher: Flusher | null = null
   private capture: ReturnType<typeof setInterval> | null = null
-  private disk: ReturnType<typeof hdaFromEmulator> = null
 
   constructor(
     private readonly opts: { baseUrl: string; manifest: VmManifest; overlay?: VmOverlay },
@@ -85,9 +84,12 @@ export class VmSession {
       this.emu = emu
       emu.add_listener('serial0-output-byte', this.onByte as (p: never) => void)
       emu.add_listener('download-error', this.onDownloadError as (p: never) => void)
+      this.watchdog = startWatchdog(BOOT_TIMEOUT_MS, () => this.fail('boot timed out'))
+      // v86 builds its devices asynchronously; restoring the disk before 'emulator-ready' is not reliable.
+      if (this.opts.overlay) await this.whenReady(emu)
+      if (this.stopped) return
       this.setupOverlay(emu)
       emu.run()
-      this.watchdog = startWatchdog(BOOT_TIMEOUT_MS, () => this.fail('boot timed out'))
     } catch (e) {
       this.fail(e instanceof Error ? e.message : String(e))
     }
@@ -136,38 +138,47 @@ export class VmSession {
     return flushed
   }
 
+  private whenReady(emu: V86Emulator): Promise<void> {
+    return new Promise((resolve) => emu.add_listener('emulator-ready', () => resolve()))
+  }
+
   /** Wires overlay restore, periodic capture, debounced saves and the pagehide save. */
   private setupOverlay(emu: V86Emulator): void {
     const ov = this.opts.overlay
-    this.disk = hdaFromEmulator(emu)
-    if (!ov || !this.disk) return
-    if (ov.blocks.size > 0) restoreBlocks(this.disk, ov.blocks)
+    if (!ov || !hdaFromEmulator(emu)) return
+    if (ov.blocks.size > 0) restoreBlocks(hdaFromEmulator(emu)!, ov.blocks)
     this.overlay = new BlockOverlay()
-    const disk = this.disk
     this.flusher = createFlusher({
       save: async () => {
-        captureDirty(disk, this.overlay!)
+        this.captureNow()
         await ov.store.save(ov.buildId, this.overlay!.takeDirty())
       },
       onError: (e) => this.handlers.onStorageError?.(e),
     })
     this.capture = setInterval(() => {
-      captureDirty(disk, this.overlay!)
-      if (this.overlay!.dirty().length > 0) this.flusher?.schedule()
+      this.captureNow()
+      // Schedule only when no save is already waiting: rescheduling on every tick would keep pushing the save back.
+      if (this.overlay!.dirty().length > 0 && this.flusher && !this.flusher.isScheduled()) this.flusher.schedule()
     }, CAPTURE_INTERVAL_MS)
     window.addEventListener('pagehide', this.onPageHide)
   }
 
   /** Captures and saves right away. Used on pagehide and stop, so the last changes are not lost. */
   private saveNow(): void {
-    if (!this.flusher || !this.disk || !this.overlay) return
-    captureDirty(this.disk, this.overlay)
+    if (!this.flusher || !this.overlay) return
+    this.captureNow()
     this.flusher.schedule()
   }
 
+  /** Copies the guest's written blocks into the overlay. Looks the disk up each time: the handle is not stable. */
+  private captureNow(): void {
+    const disk = this.emu ? hdaFromEmulator(this.emu) : null
+    if (disk && this.overlay) captureDirty(disk, this.overlay)
+  }
+
   private onPageHide = (): void => {
-    if (!this.flusher || !this.disk || !this.overlay) return
-    captureDirty(this.disk, this.overlay)
+    if (!this.flusher || !this.overlay) return
+    this.captureNow()
     this.flusher.schedule()
     void this.flusher.flushNow()
   }

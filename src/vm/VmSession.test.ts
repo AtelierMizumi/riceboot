@@ -6,7 +6,10 @@ type Listener = (payload: unknown) => void
 function fakeEmu() {
   const listeners = new Map<string, Set<Listener>>()
   const emu = {
-    add_listener: (ev: string, cb: Listener) => void (listeners.get(ev) ?? listeners.set(ev, new Set()).get(ev)!).add(cb),
+    add_listener: (ev: string, cb: Listener) => {
+      if (ev === 'emulator-ready') return void cb(undefined)
+      ;(listeners.get(ev) ?? listeners.set(ev, new Set()).get(ev)!).add(cb)
+    },
     remove_listener: (ev: string, cb: Listener) => void listeners.get(ev)?.delete(cb),
     serial0_send: vi.fn(),
     run: vi.fn(),
@@ -143,4 +146,39 @@ test('stop resolves only after the final save has finished', async () => {
   finish()
   await vi.runAllTimersAsync()
   expect(done).toBe(true)
+})
+
+test('restore waits for the emulator-ready event, as the Task 0 probe does', async () => {
+  const set = vi.fn()
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  const ready: Array<() => void> = []
+  const base = e.add_listener
+  e.add_listener = (ev: string, cb: Listener) => {
+    if (ev === 'emulator-ready') ready.push(cb as () => void)
+    else base(ev, cb)
+  }
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[]], set_state: set } } } } } } }
+  e.run = vi.fn()
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: overlayWith([[4, new Uint8Array(256)]]) }, handlers, { load: async () => {}, create: (() => e) as never })
+  const started = s.start()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(set).not.toHaveBeenCalled()
+  expect(e.run).not.toHaveBeenCalled()
+  ready.forEach((cb) => cb())
+  await started
+  expect(set).toHaveBeenCalledTimes(1)
+  expect(e.run).toHaveBeenCalledTimes(1)
+  s.stop()
+})
+
+test('continuous guest writes still get saved (the debounce must not be reset forever)', async () => {
+  const ov = overlayWith([])
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[[8, new Uint8Array(256)]]], set_state: vi.fn() } } } } } } }
+  e.run = vi.fn()
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: ov }, handlers, { load: async () => {}, create: (() => e) as never })
+  await s.start()
+  await vi.advanceTimersByTimeAsync(7000)
+  expect(ov.store.save).toHaveBeenCalled()
+  s.stop()
 })

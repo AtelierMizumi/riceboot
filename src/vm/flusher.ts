@@ -1,6 +1,8 @@
 export interface Flusher {
   /** (Re)starts the debounce timer. */
   schedule(): void
+  /** True while a save is waiting on the debounce timer. */
+  isScheduled(): boolean
   /** Saves now if a save was scheduled. */
   flushNow(): Promise<void>
   /** Cancels the timer; no further saves happen. */
@@ -40,6 +42,9 @@ export function createFlusher(opts: {
       pending = true
       if (timer !== null) clearT(timer)
       timer = setT(() => void flushNow(), delay)
+    },
+    isScheduled() {
+      return timer !== null
     },
     flushNow,
     dispose() {

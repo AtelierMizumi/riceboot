@@ -34,3 +34,12 @@ test('flushNow saves at once and dispose cancels a pending save', async () => {
   await vi.runAllTimersAsync()
   expect(save).toHaveBeenCalledTimes(1)
 })
+
+test('isScheduled is true only while a save waits on the timer', async () => {
+  const f = createFlusher({ save: async () => {}, onError: vi.fn() })
+  expect(f.isScheduled()).toBe(false)
+  f.schedule()
+  expect(f.isScheduled()).toBe(true)
+  await f.flushNow()
+  expect(f.isScheduled()).toBe(false)
+})
