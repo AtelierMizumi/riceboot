@@ -23,11 +23,17 @@ export interface V86Options {
   cdrom: { url: string; async: true; size: number; use_parts: true; fixed_chunk_size: number }
   hda: { url: string; async: true; size: number; use_parts: true; fixed_chunk_size: number }
   memory_size: number
-  autostart: true
+  autostart: boolean
 }
 
 /** v86 options for the read-only disks. No network device: the guest is offline by design. */
-export function buildV86Options(args: { baseUrl: string; manifest: VmManifest; wasmPath: string; memoryMiB?: number }): V86Options {
+export function buildV86Options(args: {
+  baseUrl: string
+  manifest: VmManifest
+  wasmPath: string
+  memoryMiB?: number
+  autostart?: boolean
+}): V86Options {
   const { baseUrl, manifest } = args
   const disk = (d: VmDisk) => ({
     url: `${baseUrl}${d.base}${d.ext}`,
@@ -43,6 +49,6 @@ export function buildV86Options(args: { baseUrl: string; manifest: VmManifest; w
     cdrom: disk(manifest.cdrom),
     hda: disk(manifest.hda),
     memory_size: (args.memoryMiB ?? 256) * 1024 * 1024,
-    autostart: true,
+    autostart: args.autostart ?? true,
   }
 }

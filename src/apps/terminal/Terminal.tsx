@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createShell } from '../../kernel/shell/shell'
 import { PACKAGE_BOOTSTRAP } from '../../vm/bootstrap'
 import { createRunGuard, fetchManifest } from '../../vm/guards'
+import { openOverlayStore, type OverlayStore } from '../../vm/overlayStore'
+import { overlayAction } from '../../vm/overlayPolicy'
+import { shouldRestartAfterReset } from '../../vm/resetPolicy'
 import { VmSession } from '../../vm/VmSession'
 import { isVmSupported } from '../../vm/runtime'
 import { nextMode, type ModeEvent, type ModeState } from '../../vm/terminalMode'
@@ -21,6 +24,7 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
   const modeRef = useRef<ModeState>(mode)
   const dispatchRef = useRef<(e: ModeEvent) => void>(() => {})
   const focusRef = useRef<() => void>(() => {})
+  const resetRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     const el = host.current
@@ -73,19 +77,38 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
     // Every start gets a run id. Callbacks and awaits from an older run are dropped, so a stale VM cannot
     // write into the terminal or dispatch into a newer mode.
     const guard = createRunGuard()
+    // Saved Linux changes live in IndexedDB (or memory when storage is blocked). Opened once per terminal.
+    let store: OverlayStore | null = null
+    const storeReady = openOverlayStore().then((st) => (store = st))
+    // The promise of the last stop: Reset waits for it so a late save cannot write back after the clear.
+    let stopping: Promise<void> = Promise.resolve()
+
     const runEffect = (effect: string) => {
       if (effect === 'show-unsupported') {
         term.write('\r\nReal Linux needs WebAssembly and about 300 MB of free memory. Staying in shell mode.\r\n' + shell.prompt())
       } else if (effect === 'start-vm') {
-        session?.stop()
         session = null
         const run = guard.next()
         void (async () => {
           try {
             const manifest = await fetchManifest('/vm/manifest.json')
+            const st = await storeReady
             if (!guard.isCurrent(run)) return
+            const action = overlayAction(await st.storedBuildId(), manifest.buildId)
+            if (!guard.isCurrent(run)) return
+            let blocks = new Map<number, Uint8Array>()
+            if (action === 'restore') blocks = await st.load()
+            if (action === 'ask-discard') {
+              if (!window.confirm('Saved Linux changes were made with another image build. Discard them and start fresh?')) {
+                dispatchRef.current({ type: 'failed', reason: 'kept the saved Linux changes from another build' })
+                return
+              }
+              await st.clear()
+            }
+            if (!guard.isCurrent(run)) return
+            if (!st.persistent) term.write("\r\nStorage is unavailable: Linux changes won't be kept after reload.\r\n")
             const s = new VmSession(
-              { baseUrl: '/vm/', manifest },
+              { baseUrl: '/vm/', manifest, overlay: { store: st, buildId: manifest.buildId, blocks } },
               {
                 onOutput: (t) => guard.isCurrent(run) && term.write(t),
                 onBooted: () => guard.isCurrent(run) && dispatchRef.current({ type: 'booted' }),
@@ -95,6 +118,7 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
                   s.resize(term.cols, term.rows)
                 },
                 onFailed: (reason) => guard.isCurrent(run) && dispatchRef.current({ type: 'failed', reason }),
+                onStorageError: () => guard.isCurrent(run) && term.write("\r\nChanges could not be saved (storage full or blocked); they stay until reload.\r\n"),
               },
             )
             session = s
@@ -106,10 +130,20 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
         })()
       } else if (effect === 'stop-vm') {
         guard.cancelAll()
-        session?.stop()
+        stopping = session ? session.stop() : Promise.resolve()
         session = null
         term.write('\r\n' + shell.prompt())
       }
+    }
+
+    resetRef.current = async () => {
+      const restart = shouldRestartAfterReset(modeRef.current.mode)
+      if (modeRef.current.mode !== 'shell') dispatchRef.current({ type: 'leave' })
+      await stopping
+      const st = store ?? (await storeReady)
+      await st.clear()
+      term.write('\r\nLinux was reset to the packaged image.\r\n')
+      if (restart) dispatchRef.current({ type: 'request-linux', supported: isVmSupported() })
     }
 
     dispatchRef.current = (e) => {
@@ -166,6 +200,9 @@ export default function Terminal({ vfs, tokens, setTitle, wm }: AppCtx) {
           onClick={() => dispatchRef.current({ type: 'request-linux', supported })}
         >
           linux
+        </button>
+        <button type="button" onClick={() => void resetRef.current()}>
+          reset
         </button>
         {mode.mode === 'loading' && <span className="term-status">loading…</span>}
         {mode.mode === 'error' && (

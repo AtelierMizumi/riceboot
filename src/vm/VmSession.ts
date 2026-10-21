@@ -1,5 +1,9 @@
-import { buildV86Options, type VmManifest } from './options'
+import { BlockOverlay } from './overlay'
+import { captureDirty, hdaFromEmulator, restoreBlocks } from './diskState'
+import { createFlusher, type Flusher } from './flusher'
 import { startWatchdog } from './guards'
+import { buildV86Options, type VmManifest } from './options'
+import type { OverlayStore } from './overlayStore'
 import { sttyCommand } from './resize'
 import { loadRuntime as loadScript } from './runtime'
 
@@ -10,12 +14,15 @@ export interface VmSessionHandlers {
   /** A root shell prompt is up. Only now is it safe to send shell commands such as stty. */
   onShell(): void
   onFailed(reason: string): void
+  /** A save failed (quota, storage blocked). The changes stay in memory and the next save retries. */
+  onStorageError?(e: unknown): void
 }
 
 interface V86Emulator {
   add_listener(event: string, cb: (payload: never) => void): void
   remove_listener(event: string, cb: (payload: never) => void): void
   serial0_send(text: string): void
+  run(): void
   stop(): Promise<void> | void
   destroy?(): Promise<void> | void
 }
@@ -26,15 +33,24 @@ export interface VmSessionDeps {
   create(options: object): V86Emulator
 }
 
+/** Saved changes for this build. `blocks` are restored into the package disk before the emulator runs. */
+export interface VmOverlay {
+  store: OverlayStore
+  buildId: string
+  blocks: Map<number, Uint8Array>
+}
+
 /** A login that has not appeared in this long is a failed boot (a stalled download, for example). */
 export const BOOT_TIMEOUT_MS = 180_000
+/** How often guest writes are captured from the disk. Saves are debounced separately. */
+export const CAPTURE_INTERVAL_MS = 2000
 
 const defaultDeps: VmSessionDeps = {
   load: loadScript,
   create: (o) => new (window as unknown as { V86: new (o: object) => V86Emulator }).V86(o),
 }
 
-/** One v86 emulator: loads the runtime on start, streams serial output, and frees everything on stop. */
+/** One v86 emulator: loads the runtime, restores saved changes, streams serial output, and saves on stop. */
 export class VmSession {
   private emu: V86Emulator | null = null
   private decoder = new TextDecoder('utf-8')
@@ -43,9 +59,12 @@ export class VmSession {
   private shellReady = false
   private stopped = false
   private watchdog: { clear(): void } | null = null
+  private overlay: BlockOverlay | null = null
+  private flusher: Flusher | null = null
+  private capture: ReturnType<typeof setInterval> | null = null
 
   constructor(
-    private readonly opts: { baseUrl: string; manifest: VmManifest },
+    private readonly opts: { baseUrl: string; manifest: VmManifest; overlay?: VmOverlay },
     private readonly handlers: VmSessionHandlers,
     private readonly deps: VmSessionDeps = defaultDeps,
   ) {}
@@ -59,12 +78,18 @@ export class VmSession {
         baseUrl: this.opts.baseUrl,
         manifest: this.opts.manifest,
         wasmPath: `${this.opts.baseUrl}runtime/v86.wasm`,
+        autostart: false,
       })
       const emu = this.deps.create(options)
       this.emu = emu
       emu.add_listener('serial0-output-byte', this.onByte as (p: never) => void)
       emu.add_listener('download-error', this.onDownloadError as (p: never) => void)
       this.watchdog = startWatchdog(BOOT_TIMEOUT_MS, () => this.fail('boot timed out'))
+      // v86 builds its devices asynchronously; restoring the disk before 'emulator-ready' is not reliable.
+      if (this.opts.overlay) await this.whenReady(emu)
+      if (this.stopped) return
+      this.setupOverlay(emu)
+      emu.run()
     } catch (e) {
       this.fail(e instanceof Error ? e.message : String(e))
     }
@@ -79,25 +104,90 @@ export class VmSession {
     if (this.shellReady && !this.stopped) this.write(sttyCommand(cols, rows))
   }
 
-  /** Stops the emulator, removes its listeners and frees its memory. Idempotent. */
-  stop(): void {
-    if (this.stopped) return
+  /** Saves pending changes, stops the emulator, removes its listeners and frees its memory. Idempotent.
+   *  The promise resolves once the final save has finished. */
+  stop(): Promise<void> {
+    if (this.stopped) return Promise.resolve()
     this.stopped = true
     this.watchdog?.clear()
     this.watchdog = null
+    this.saveNow()
+    let flushed: Promise<void> = Promise.resolve()
+    if (this.flusher) {
+      const f = this.flusher
+      this.flusher = null
+      flushed = f.flushNow().finally(() => f.dispose())
+    }
+    if (this.capture !== null) clearInterval(this.capture)
+    this.capture = null
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide)
     const emu = this.emu
     this.emu = null
-    if (!emu) return
-    emu.remove_listener('serial0-output-byte', this.onByte as (p: never) => void)
-    emu.remove_listener('download-error', this.onDownloadError as (p: never) => void)
-    void (async () => {
-      try {
-        await emu.stop()
-        await emu.destroy?.()
-      } catch {
-        // Already torn down; nothing left to free.
-      }
-    })()
+    if (emu) {
+      emu.remove_listener('serial0-output-byte', this.onByte as (p: never) => void)
+      emu.remove_listener('download-error', this.onDownloadError as (p: never) => void)
+      void (async () => {
+        try {
+          await emu.stop()
+          await emu.destroy?.()
+        } catch {
+          // Already torn down; nothing left to free.
+        }
+      })()
+    }
+    return flushed
+  }
+
+  private whenReady(emu: V86Emulator): Promise<void> {
+    return new Promise((resolve) => emu.add_listener('emulator-ready', () => resolve()))
+  }
+
+  /** Wires overlay restore, periodic capture, debounced saves and the pagehide save. */
+  private setupOverlay(emu: V86Emulator): void {
+    const ov = this.opts.overlay
+    if (!ov || !hdaFromEmulator(emu)) return
+    if (ov.blocks.size > 0) restoreBlocks(hdaFromEmulator(emu)!, ov.blocks)
+    this.overlay = new BlockOverlay()
+    this.flusher = createFlusher({
+      save: async () => {
+        this.captureNow()
+        const dirty = this.overlay!.takeDirty()
+        try {
+          await ov.store.save(ov.buildId, dirty)
+        } catch (e) {
+          // Nothing was stored: mark the blocks dirty again so the next save writes them.
+          this.overlay!.markDirty(dirty.keys())
+          throw e
+        }
+      },
+      onError: (e) => this.handlers.onStorageError?.(e),
+    })
+    this.capture = setInterval(() => {
+      this.captureNow()
+      // Schedule only when no save is already waiting: rescheduling on every tick would keep pushing the save back.
+      if (this.overlay!.dirty().length > 0 && this.flusher && !this.flusher.isScheduled()) this.flusher.schedule()
+    }, CAPTURE_INTERVAL_MS)
+    window.addEventListener('pagehide', this.onPageHide)
+  }
+
+  /** Captures and saves right away. Used on pagehide and stop, so the last changes are not lost. */
+  private saveNow(): void {
+    if (!this.flusher || !this.overlay) return
+    this.captureNow()
+    this.flusher.schedule()
+  }
+
+  /** Copies the guest's written blocks into the overlay. Looks the disk up each time: the handle is not stable. */
+  private captureNow(): void {
+    const disk = this.emu ? hdaFromEmulator(this.emu) : null
+    if (disk && this.overlay) captureDirty(disk, this.overlay)
+  }
+
+  private onPageHide = (): void => {
+    if (!this.flusher || !this.overlay) return
+    this.captureNow()
+    this.flusher.schedule()
+    void this.flusher.flushNow()
   }
 
   private fail(reason: string): void {
