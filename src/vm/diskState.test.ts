@@ -25,3 +25,20 @@ test('hdaFromEmulator reaches the package disk through the v86 internals', () =>
   expect(hdaFromEmulator(emu)).toBe(hda)
   expect(hdaFromEmulator({})).toBeNull()
 })
+
+test('captureDirty ignores blocks whose bytes did not change since the last capture', () => {
+  const overlay = new BlockOverlay()
+  const disk: V86DiskLike = { get_state: () => [[[5, block(3)]]], set_state: vi.fn() }
+  captureDirty(disk, overlay)
+  overlay.takeDirty()
+  captureDirty(disk, overlay)
+  expect(overlay.dirty()).toEqual([])
+})
+
+test('captureDirty copies the bytes so later writes by v86 do not change the overlay', () => {
+  const overlay = new BlockOverlay()
+  const live = block(3)
+  captureDirty({ get_state: () => [[[5, live]]], set_state: vi.fn() }, overlay)
+  live.fill(9)
+  expect(overlay.get(5)?.[0]).toBe(3)
+})

@@ -6,11 +6,23 @@ export interface V86DiskLike {
   set_state(state: unknown): void
 }
 
-/** Copies every block v86 reports as written into the overlay. The format is pinned in docs/research/m3b-disk-state.md. */
+/** Copies every block v86 reports as written into the overlay. The format is pinned in docs/research/m3b-disk-state.md.
+ *  v86 reports all blocks written since attach, so a block is copied (and marked dirty) only when its bytes changed. */
 export function captureDirty(disk: V86DiskLike, overlay: BlockOverlay): void {
   const state = disk.get_state() as [Array<[number, Uint8Array]>] | null
   const entries = state?.[0] ?? []
-  for (const [key, bytes] of entries) overlay.put(key, bytes)
+  for (const [key, bytes] of entries) {
+    const known = overlay.get(key)
+    if (known && sameBytes(known, bytes)) continue
+    // Copy: v86 may reuse the buffer it handed us.
+    overlay.put(key, bytes.slice())
+  }
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
 }
 
 /** Hands saved blocks back to v86. Call before the emulator runs. */

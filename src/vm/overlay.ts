@@ -28,6 +28,11 @@ export class BlockOverlay {
     return out
   }
 
+  /** Makes blocks dirty again, e.g. after a save failed. Keys without data are ignored. */
+  markDirty(indexes: Iterable<number>): void {
+    for (const i of indexes) if (this.data.has(i)) this.dirtySet.add(i)
+  }
+
   clear(): void {
     this.data.clear()
     this.dirtySet.clear()

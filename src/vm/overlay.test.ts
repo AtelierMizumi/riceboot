@@ -32,3 +32,11 @@ test('clear removes everything', () => {
   expect(o.size).toBe(0)
   expect(o.get(1)).toBeUndefined()
 })
+
+test('markDirty makes saved blocks dirty again after a failed save', () => {
+  const o = new BlockOverlay()
+  o.put(1, new Uint8Array(256).fill(1))
+  o.takeDirty()
+  o.markDirty([1])
+  expect(o.dirty()).toEqual([1])
+})

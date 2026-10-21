@@ -151,7 +151,14 @@ export class VmSession {
     this.flusher = createFlusher({
       save: async () => {
         this.captureNow()
-        await ov.store.save(ov.buildId, this.overlay!.takeDirty())
+        const dirty = this.overlay!.takeDirty()
+        try {
+          await ov.store.save(ov.buildId, dirty)
+        } catch (e) {
+          // Nothing was stored: mark the blocks dirty again so the next save writes them.
+          this.overlay!.markDirty(dirty.keys())
+          throw e
+        }
       },
       onError: (e) => this.handlers.onStorageError?.(e),
     })

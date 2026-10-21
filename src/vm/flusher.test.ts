@@ -43,3 +43,32 @@ test('isScheduled is true only while a save waits on the timer', async () => {
   await f.flushNow()
   expect(f.isScheduled()).toBe(false)
 })
+
+test('a flushNow while a save is in flight waits for that save', async () => {
+  let finish!: () => void
+  const save = vi.fn(() => new Promise<void>((r) => { finish = r }))
+  const f = createFlusher({ save, onError: vi.fn() })
+  f.schedule()
+  const first = f.flushNow()
+  f.schedule()
+  let secondDone = false
+  const second = f.flushNow().then(() => { secondDone = true })
+  await Promise.resolve()
+  expect(secondDone).toBe(false)
+  finish()
+  await first
+  await second
+  expect(secondDone).toBe(true)
+})
+
+test('a flushNow that follows a failed in-flight save retries it', async () => {
+  const save = vi.fn()
+    .mockRejectedValueOnce(new Error('QuotaExceededError'))
+    .mockResolvedValueOnce(undefined)
+  const f = createFlusher({ save, onError: vi.fn() })
+  f.schedule()
+  const first = f.flushNow()
+  const second = f.flushNow()
+  await Promise.all([first, second])
+  expect(save).toHaveBeenCalledTimes(2)
+})

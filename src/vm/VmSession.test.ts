@@ -182,3 +182,20 @@ test('continuous guest writes still get saved (the debounce must not be reset fo
   expect(ov.store.save).toHaveBeenCalled()
   s.stop()
 })
+
+test('a failed save keeps its blocks dirty so the next save writes them again', async () => {
+  const save = vi.fn()
+    .mockRejectedValueOnce(new Error('QuotaExceededError'))
+    .mockResolvedValue(undefined)
+  const ov = overlayWith([], save)
+  const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
+  e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[[7, new Uint8Array(256).fill(7)]]], set_state: vi.fn() } } } } } } }
+  e.run = vi.fn()
+  const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: ov }, handlers, { load: async () => {}, create: (() => e) as never })
+  await s.start()
+  await vi.advanceTimersByTimeAsync(8000)
+  expect(ov.store.save).toHaveBeenCalledTimes(2)
+  const retried = ov.store.save.mock.calls[1][1] as Map<number, Uint8Array>
+  expect(retried.get(7)?.[0]).toBe(7)
+  s.stop()
+})
