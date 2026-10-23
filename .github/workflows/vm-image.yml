@@ -1,16 +1,17 @@
 name: vm-image
 
-# Builds the Linux image (public/vm) and publishes it as a GitHub release, so Cloudflare builds only fetch it.
+# Builds the Linux image (public/vm) and publishes it as a GitHub release. Cloudflare then fetches the release
+# by the tag and sha256 pinned in scripts/vm-release.json, so a new release is never used until someone pins it.
 on:
   workflow_dispatch:
-  push:
-    tags: ['vm-*']
 
 permissions:
   contents: write
 
 jobs:
   build:
+    # Only the default branch may publish: a release is the trust root for the deployed image.
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +23,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm vm:build
       - name: Package the image
-        run: |
-          tar -cf riceboot-vm.tar -C public vm
-          sha256sum riceboot-vm.tar > riceboot-vm.tar.sha256
+        run: tar -cf riceboot-vm.tar -C public vm
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="vm-${{ github.run_number }}"
-          gh release create "$TAG" riceboot-vm.tar riceboot-vm.tar.sha256 \
-            --title "$TAG" --latest \
-            --notes "Linux image built from commit ${GITHUB_SHA::7}. Consumed by the Cloudflare build (scripts/fetch-vm.mjs)."
+          SHA=$(sha256sum riceboot-vm.tar | cut -d' ' -f1)
+          gh release create "$TAG" riceboot-vm.tar --title "$TAG" \
+            --notes "Linux image built from commit ${GITHUB_SHA::7}."
+          {
+            echo "### Pin this release"
+            echo "Set scripts/vm-release.json to:"
+            echo '```json'
+            echo "{ \"tag\": \"$TAG\", \"sha256\": \"$SHA\" }"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
