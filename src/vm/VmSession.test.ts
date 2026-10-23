@@ -87,7 +87,7 @@ test('a failed part download fails the session with the file name', async () => 
 })
 
 function overlayWith(entries: [number, Uint8Array][], saved: () => Promise<void> = async () => {}) {
-  const store = { persistent: true, storedBuildId: async () => 'b1', load: async () => new Map(entries), save: vi.fn((_id: string, _b: Map<number, Uint8Array>) => saved()), clear: async () => {} }
+  const store = { persistent: true, storedBuildId: async () => 'b1', load: async () => new Map(entries), save: vi.fn<(id: string, blocks: Map<number, Uint8Array>) => Promise<void>>(() => saved()), clear: async () => {} }
   return { store, buildId: 'b1', blocks: new Map(entries) }
 }
 
@@ -96,7 +96,7 @@ test('start restores the saved blocks into the package disk, then runs the emula
   const e = fakeEmu() as ReturnType<typeof fakeEmu> & Record<string, unknown>
   e.v86 = { cpu: { devices: { ide: { primary: { master: { buffer: { get_state: () => [[]], set_state: set } } } } } } }
   e.run = vi.fn()
-  const create = vi.fn((_o: object) => e)
+  const create = vi.fn<(o: object) => unknown>(() => e)
   const s = new VmSession({ baseUrl: '/vm/', manifest, overlay: overlayWith([[4, new Uint8Array(256)]]) }, handlers, { load: async () => {}, create: create as never })
   await s.start()
   expect(create.mock.calls[0][0]).toMatchObject({ autostart: false })

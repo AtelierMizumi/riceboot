@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm vm:runtime && tsc -b && vite build",
+    "build:cf": "node scripts/fetch-vm.mjs && pnpm build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",

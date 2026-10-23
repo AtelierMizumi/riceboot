@@ -1,0 +1,35 @@
+name: vm-image
+
+# Builds the Linux image (public/vm) and publishes it as a GitHub release, so Cloudflare builds only fetch it.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['vm-*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vm:build
+      - name: Package the image
+        run: |
+          tar -cf riceboot-vm.tar -C public vm
+          sha256sum riceboot-vm.tar > riceboot-vm.tar.sha256
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="vm-${{ github.run_number }}"
+          gh release create "$TAG" riceboot-vm.tar riceboot-vm.tar.sha256 \
+            --title "$TAG" --latest \
+            --notes "Linux image built from commit ${GITHUB_SHA::7}. Consumed by the Cloudflare build (scripts/fetch-vm.mjs)."
