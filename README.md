@@ -1,5 +1,11 @@
 # riceboot
 
+[![CI](https://github.com/AtelierMizumi/riceboot/actions/workflows/ci.yml/badge.svg)](https://github.com/AtelierMizumi/riceboot/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg?logo=react)](https://react.dev/)
+[![Cloudflare Workers](https://img.shields.io/badge/Deploy-Cloudflare%20Workers-orange.svg?logo=cloudflare)](https://workers.cloudflare.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A riced Arch Linux desktop in your browser — for people who have never used Linux
 and want to feel what an r/unixporn setup is like. Hyprland-style tiling, a
 waybar-style bar, a kitty-like terminal with a simulated shell, and a persistent
